@@ -556,7 +556,12 @@ class Agent:
         return self._apply_transition(fsm, transition, data)
 
     def _apply_transition(self, fsm: Fsm, transition: Transition, data: dict) -> str:
-        """Выполнить разрешённый переход и сохранить состояние."""
+        """Выполнить разрешённый переход и сохранить состояние.
+
+        Ручная навигация (``/task goto``, ``/task next``, ``/task back``) только
+        перемещает по этапам и не завершает задачу: завершение выполняется
+        исключительно авто-проверкой (см. ``check_transitions`` / п. 4.2).
+        """
         current = fsm.active_stage()
         target = fsm.stage_by_name(transition.to)
         if target is None:
@@ -565,18 +570,31 @@ class Agent:
             current.status = "completed" if target.order > current.order else "pending"
         target.status = "active"
         fsm.current_stage = target.name
-        terminal = not fsm.outgoing_transitions(target.name)
-        if terminal:
-            fsm.completed = True
-            data["records"] = []
         data["fsm"] = fsm.to_dict()
         self._save_working(data)
-        if terminal:
-            return (
-                f"Переход к этапу «{target.name}». Этап не имеет исходящих переходов — "
-                "задача завершена, рабочая память очищена."
-            )
         return f"Переход к этапу «{target.name}»."
+
+    def fsm_finish_if_terminal(self) -> Optional[str]:
+        """Завершить задачу, если текущий этап не имеет исходящих переходов.
+
+        Используется после подтверждённого авто-перехода (п. 4.2): если целевой
+        этап не имеет исходящих переходов, задача сразу помечается завершённой.
+        Возвращает текст сообщения, если задача была завершена, иначе None.
+        """
+        data = self._require_working()
+        fsm = self._fsm_from(data)
+        if fsm.completed or fsm.paused:
+            return None
+        if not fsm.current_stage or fsm.outgoing_transitions(fsm.current_stage):
+            return None
+        fsm.completed = True
+        data["records"] = []
+        data["fsm"] = fsm.to_dict()
+        self._save_working(data)
+        return (
+            f"Этап «{fsm.current_stage}» не имеет исходящих переходов — "
+            "задача завершена, рабочая память очищена."
+        )
 
     # ------------------------------------------------------- управление переходами
     def fsm_transitions_set(self, transitions: list[dict]) -> list[dict]:
