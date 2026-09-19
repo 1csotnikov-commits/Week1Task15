@@ -31,6 +31,7 @@ COMMANDS: dict[str, str] = {
     "/task check": "вручную проверить условия исходящих переходов.",
     "/task pause": "поставить задачу на паузу.",
     "/task resume": "снять с паузы.",
+    "/task restart": "начать задачу заново с первого этапа (краткосрочная память очищается).",
     "/profile list": "список профилей агента, активный помечен.",
     "/profile current": "показать имя активного профиля.",
     "/profile show [<name>]": "показать содержимое профиля (по умолчанию — активного).",
@@ -160,7 +161,7 @@ def handle_task(manager: AgentManager, args: list[str]) -> str:
             "Использование: /task new <name> | /task switch <name> | /task current | "
             "/task stages list|set | /task transitions list|set|add|del|edit|clear | "
             "/task state | /task next | /task back | /task goto <name> | "
-            "/task check | /task pause | /task resume"
+            "/task check | /task pause | /task resume | /task restart"
         )
     sub = args[0].lower()
     agent = manager.active()
@@ -211,6 +212,9 @@ def handle_task(manager: AgentManager, args: list[str]) -> str:
 
     if sub == "resume":
         return agent.fsm_resume()
+
+    if sub == "restart":
+        return agent.fsm_restart()
 
     raise AgentError("Неизвестная подкоманда /task ...")
 

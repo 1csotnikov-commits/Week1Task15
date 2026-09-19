@@ -487,6 +487,31 @@ class Agent:
         self._save_working(data)
         return [s.name for s in built]
 
+    def fsm_restart(self) -> str:
+        """Начать задачу заново с первого этапа.
+
+        Сбрасывает состояние FSM (первый этап — active, остальные — pending,
+        задача не на паузе и не завершена), сохраняя этапы и переходы.
+        Краткосрочная память очищается.
+        """
+        data = self._require_working()
+        fsm = self._fsm_from(data)
+        ordered = fsm.ordered_stages()
+        if not ordered:
+            raise TaskError("У задачи нет этапов. Задайте их через /task stages set.")
+        for i, stage in enumerate(ordered):
+            stage.status = "active" if i == 0 else "pending"
+        fsm.current_stage = ordered[0].name
+        fsm.paused = False
+        fsm.completed = False
+        data["fsm"] = fsm.to_dict()
+        self._save_working(data)
+        self._reset_short_for_task(self.tasks.active_task)
+        return (
+            f"Задача начата заново с этапа «{ordered[0].name}». "
+            "Краткосрочная память очищена."
+        )
+
     def fsm_allowed_transitions(self) -> list[dict]:
         """Исходящие переходы из текущего этапа (как словари)."""
         data = self._require_working()
