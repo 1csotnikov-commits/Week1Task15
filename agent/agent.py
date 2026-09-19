@@ -496,13 +496,23 @@ class Agent:
         return [t.to_dict() for t in fsm.outgoing_transitions(current.name)]
 
     def fsm_move(self, to_name: str) -> str:
-        """Перейти в этап ``to_name`` по разрешённому переходу."""
+        """Перейти в этап ``to_name`` по разрешённому переходу.
+
+        Переход на несуществующий или неразрешённый этап отклоняется — задача
+        при этом не завершается.
+        """
         data = self._require_working()
         fsm = self._fsm_from(data)
         current = self._fsm_require_active(fsm)
+        allowed = [t.to for t in fsm.outgoing_transitions(current.name)]
+        allowed_str = ", ".join(allowed) if allowed else "нет"
+        if fsm.stage_by_name(to_name) is None:
+            raise TaskError(
+                f"Этап «{to_name}» не найден. "
+                f"Допустимые переходы из {current.name}: {allowed_str}."
+            )
         transition = fsm.transition(current.name, to_name)
         if transition is None:
-            allowed = [t.to for t in fsm.outgoing_transitions(current.name)]
             raise TaskError(format_disallowed(current.name, to_name, allowed))
         return self._apply_transition(fsm, transition, data)
 
