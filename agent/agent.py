@@ -513,36 +513,54 @@ class Agent:
         )
 
     def fsm_allowed_transitions(self) -> list[dict]:
-        """Исходящие переходы из текущего этапа (как словари)."""
+        """Переходы из текущего этапа, доступные для ручной навигации.
+
+        Ручная навигация (/task next, /task goto) допустима только по переходам
+        с пустым условием. Переходы с условием выполняются авто-проверкой.
+        """
         data = self._require_working()
         fsm = self._fsm_from(data)
         self._fsm_require_active(fsm)
         current = fsm.active_stage()
-        return [t.to_dict() for t in fsm.outgoing_transitions(current.name)]
+        return [
+            t.to_dict()
+            for t in fsm.outgoing_transitions(current.name)
+            if not t.condition
+        ]
 
-    def fsm_move(self, to_name: str) -> str:
+    def fsm_move(self, to_name: str, allow_conditioned: bool = False) -> str:
         """Перейти в этап ``to_name`` по разрешённому переходу.
 
-        Переход на несуществующий или неразрешённый этап отклоняется — задача
-        при этом не завершается.
+        Ручная навигация (/task goto, /task next) разрешена только по переходам
+        с пустым условием; переходы с условием выполняются авто-проверкой
+        (``allow_conditioned=True`` после подтверждения условия). Переход на
+        несуществующий или неразрешённый этап отклоняется — задача при этом не
+        завершается.
         """
         data = self._require_working()
         fsm = self._fsm_from(data)
         current = self._fsm_require_active(fsm)
-        allowed = [t.to for t in fsm.outgoing_transitions(current.name)]
-        allowed_str = ", ".join(allowed) if allowed else "нет"
+        manual = [t.to for t in fsm.outgoing_transitions(current.name) if not t.condition]
+        manual_str = ", ".join(manual) if manual else "нет"
         if fsm.stage_by_name(to_name) is None:
             raise TaskError(
                 f"Этап «{to_name}» не найден. "
-                f"Допустимые переходы из {current.name}: {allowed_str}."
+                f"Допустимые переходы из {current.name}: {manual_str}."
             )
         transition = fsm.transition(current.name, to_name)
         if transition is None:
-            raise TaskError(format_disallowed(current.name, to_name, allowed))
+            raise TaskError(format_disallowed(current.name, to_name, manual))
+        if transition.condition and not allow_conditioned:
+            raise TaskError(
+                f"Переход {current.name} → {to_name} имеет условие "
+                f"«{transition.condition}». Ручной переход невозможен — дождитесь "
+                "авто-проверки условия (/task check)."
+            )
         return self._apply_transition(fsm, transition, data)
 
     def fsm_back(self) -> str:
-        """Вернуться на предыдущий этап — только при явном обратном переходе."""
+        """Вернуться на предыдущий этап — только при явном обратном переходе
+        с пустым условием."""
         data = self._require_working()
         fsm = self._fsm_from(data)
         current = self._fsm_require_active(fsm)
@@ -551,8 +569,13 @@ class Agent:
             raise TaskError("Это первый этап — назад переходить некуда.")
         transition = fsm.transition(current.name, prev.name)
         if transition is None:
-            allowed = [t.to for t in fsm.outgoing_transitions(current.name)]
-            raise TaskError(format_disallowed(current.name, prev.name, allowed))
+            manual = [t.to for t in fsm.outgoing_transitions(current.name) if not t.condition]
+            raise TaskError(format_disallowed(current.name, prev.name, manual))
+        if transition.condition:
+            raise TaskError(
+                f"Переход {current.name} → {prev.name} имеет условие "
+                f"«{transition.condition}». Ручной переход назад невозможен."
+            )
         return self._apply_transition(fsm, transition, data)
 
     def _apply_transition(self, fsm: Fsm, transition: Transition, data: dict) -> str:

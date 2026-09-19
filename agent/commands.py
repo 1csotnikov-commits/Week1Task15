@@ -495,7 +495,7 @@ def run_transitions_check(agent: Agent, verbose: bool = False) -> str:
         except (EOFError, KeyboardInterrupt):
             return "Переход отменён."
         if answer in ("y", "yes", "д", "да"):
-            moved = agent.fsm_move(t["to"])
+            moved = agent.fsm_move(t["to"], allow_conditioned=True)
             terminal = agent.fsm_finish_if_terminal()
             return f"{moved} {terminal}" if terminal else moved
         return "Остаёмся на текущем этапе."
@@ -514,7 +514,7 @@ def run_transitions_check(agent: Agent, verbose: bool = False) -> str:
     except ValueError:
         return "Неверный ввод — остаёмся на текущем этапе."
     if 1 <= index <= len(triggered):
-        moved = agent.fsm_move(triggered[index - 1]["to"])
+        moved = agent.fsm_move(triggered[index - 1]["to"], allow_conditioned=True)
         terminal = agent.fsm_finish_if_terminal()
         return f"{moved} {terminal}" if terminal else moved
     return "Переход отменён."
